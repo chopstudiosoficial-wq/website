@@ -1,310 +1,465 @@
 <!--
-  ChopStudios - Single-file HTML + CSS site (ready for GitHub Pages)
+ChopStudios - Single-file Static Site for GitHub Pages
+Includes:
+- Public sections: Home, Services, Portfolio, FAQ, Booking
+- Admin panel (protected by a simple passphrase) that reads/writes data via a Google Apps Script Web App (Google Sheets as DB)
 
-  INSTRUCTIONS (quick):
-  1) Replace "YOUR_FORMSPREE_ID" in the two <form action="..."> attributes with your Formspree form ID.
-     Example: https://formspree.io/f/mnqwerz
-     Alternatively you can replace the full action URL with a different service (Calendly/Apointlet embed)
-  2) Replace CONTACT_EMAIL with your email where you want to receive bookings (optional; Formspree doesn't need it visible).
-  3) Replace social handles and WhatsApp number in the footer.
-  4) Replace the hero logo placeholder with your red logo when you have it: <img src="/path/to/logo.png" alt="ChopStudios">
-  5) Commit this file to a GitHub repo and enable GitHub Pages on the main branch (Settings → Pages → Deploy).
+IMPORTANT SETUP STEPS (copy these to your notes):
+1) Create a Google Sheet and name it e.g. "ChopStudios Bookings".
+   - Add a header row with these columns (in row 1):
+     Timestamp, FirstName, LastName, Phone, Email, Service, Location, Date, StartTime, EndTime, Duration, Description, FileUrl, Status, Price
 
-  NOTES:
-  - This version uses only HTML + CSS (no external JS). Booking/encomendas use Formspree (free tier available).
-  - File uploads in the print-order form will be sent via Formspree if your Formspree plan supports attachments.
-  - If later you want a calendar booking UI, embed Calendly/Apointlet iframe in the "Marcações" section.
+2) Open Extensions → Apps Script in that Sheet, delete placeholder code and paste the Apps Script code (below) into Code.gs.
+   - Save and Deploy → New deployment → Select "Web app".
+   - For "Execute as" choose: Me (your Google account)
+   - For "Who has access" choose: Anyone (even anonymous)  -> This allows your static site to POST without OAuth.
+   - Click Deploy and copy the Web App URL. You'll need it in the front-end (replace API_ENDPOINT in the HTML below).
+
+3) (Optional but recommended) Change who has access to "Only myself" and instead use a Google Form for public submissions. The provided Apps Script supports a secret ADMIN_KEY to protect admin endpoints — keep this key private.
+
+4) In the HTML below replace the placeholder value API_ENDPOINT = '<REPLACE_WITH_YOUR_WEB_APP_URL>' and ADMIN_KEY = '<PICK_A_SECRET_KEY>' with your actual Web App URL and a strong secret key.
+
+5) Deploy and test the form by filling the Booking form. Check the Google Sheet for incoming rows.
+
+APPS SCRIPT CODE (paste into Apps Script -> Code.gs):
+
+/* ---------- Apps Script (Code.gs) ---------- */
+
+const ADMIN_KEY = 'REPLACE_WITH_A_STRONG_SECRET_KEY'; // change this to something only you know
+
+function doPost(e) {
+  // POST handler routes by action parameter
+  const action = (e.parameter.action || e.postData && JSON.parse(e.postData.contents).action || '').toString();
+  if (action === 'submit') return handleSubmit(e);
+  if (action === 'admin_list') return handleAdminList(e);
+  if (action === 'admin_update') return handleAdminUpdate(e);
+  if (action === 'monthly_summary') return handleMonthlySummary(e);
+  return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Unknown action'})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleSubmit(e) {
+  // Accepts form submissions and appends to sheet
+  const data = (e.postData && JSON.parse(e.postData.contents)) || e.parameter;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheets()[0];
+  const timestamp = new Date();
+  const duration = data.duration || calcDuration(data.startTime, data.endTime);
+  const row = [timestamp, data.firstName||'', data.lastName||'', data.phone||'', data.email||'', data.service||'', data.location||'', data.date||'', data.startTime||'', data.endTime||'', duration||'', data.description||'', data.fileUrl||'', 'A Confirmar', ''];
+  sheet.appendRow(row);
+  return ContentService.createTextOutput(JSON.stringify({status: 'ok'})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleAdminList(e) {
+  const payload = (e.postData && JSON.parse(e.postData.contents)) || e.parameter;
+  if (!payload || payload.adminKey !== ADMIN_KEY) return ContentService.createTextOutput(JSON.stringify({status:'error', message:'unauthorized'})).setMimeType(ContentService.MimeType.JSON);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheets()[0];
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows.shift();
+  const result = rows.map(r => {
+    const obj = {};
+    headers.forEach((h,i)=> obj[h]=r[i]);
+    return obj;
+  });
+  return ContentService.createTextOutput(JSON.stringify({status:'ok', data: result})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleAdminUpdate(e) {
+  const payload = (e.postData && JSON.parse(e.postData.contents)) || e.parameter;
+  if (!payload || payload.adminKey !== ADMIN_KEY) return ContentService.createTextOutput(JSON.stringify({status:'error', message:'unauthorized'})).setMimeType(ContentService.MimeType.JSON);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheets()[0];
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  // find row by Timestamp exact match
+  const ts = payload.Timestamp;
+  for (let i=1;i<rows.length;i++) {
+    if (rows[i][0].toString() === ts) {
+      // Update Status and Price if provided
+      const statusIdx = headers.indexOf('Status');
+      const priceIdx = headers.indexOf('Price');
+      if (statusIdx>=0 && payload.Status!==undefined) sheet.getRange(i+1, statusIdx+1).setValue(payload.Status);
+      if (priceIdx>=0 && payload.Price!==undefined) sheet.getRange(i+1, priceIdx+1).setValue(payload.Price);
+      return ContentService.createTextOutput(JSON.stringify({status:'ok'})).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({status:'error', message:'not_found'})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleMonthlySummary(e) {
+  const payload = (e.postData && JSON.parse(e.postData.contents)) || e.parameter;
+  if (!payload || payload.adminKey !== ADMIN_KEY) return ContentService.createTextOutput(JSON.stringify({status:'error', message:'unauthorized'})).setMimeType(ContentService.MimeType.JSON);
+  const month = parseInt(payload.month,10); // 1-12
+  const year = parseInt(payload.year,10);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheets()[0];
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const tsIdx = headers.indexOf('Timestamp');
+  const statusIdx = headers.indexOf('Status');
+  const priceIdx = headers.indexOf('Price');
+  let total = 0;
+  let count = 0;
+  for (let i=1;i<rows.length;i++) {
+    const ts = new Date(rows[i][tsIdx]);
+    if (ts.getFullYear()===year && (ts.getMonth()+1)===month) {
+      count++;
+      const p = parseFloat(rows[i][priceIdx]) || 0;
+      total += p;
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({status:'ok', month: month, year: year, total: total, count: count})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function calcDuration(start, end) {
+  if (!start || !end) return '';
+  try {
+    const s = new Date('1970-01-01T'+start);
+    const e = new Date('1970-01-01T'+end);
+    const diff = (e - s)/1000/60; // minutes
+    return diff + ' min';
+  } catch (err) {return ''}
+}
+
+/* ---------- End Apps Script ---------- */
+
 -->
 
 <!doctype html>
-<html lang="pt-PT">
+<html lang="pt">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ChopStudios — Fotografia & Vídeo</title>
-  <meta name="description" content="ChopStudios — Sessões fotográficas, videoclips, gravação de som, impressão de fotografias, gestão de redes sociais.">
+  <title>ChopStudios — Fotografia · Vídeo · Música</title>
   <style>
-    :root{
-      --bg:#0b0b0b;
-      --card:#0f0f0f;
-      --muted:#bdbdbd;
-      --accent:#c52020; /* vermelho do logo */
-      --glass: rgba(255,255,255,0.03);
-      --radius:14px;
-      --maxwidth:1100px;
-      --accent-2: #ff6666;
-      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      background:linear-gradient(180deg,var(--bg),#070707);
-      color:#fff;
-      -webkit-font-smoothing:antialiased;
-      -moz-osx-font-smoothing:grayscale;
-      line-height:1.45;
-    }
-
-    .wrap{max-width:var(--maxwidth);margin:36px auto;padding:24px}
-
-    header{display:flex;align-items:center;justify-content:space-between;gap:24px}
-    .brand{display:flex;align-items:center;gap:14px}
-    .brand img{height:56px;width:auto;border-radius:8px;background:var(--glass);padding:6px}
-    .brand h1{font-size:20px;margin:0}
-    .nav{display:flex;gap:16px;align-items:center}
-    .nav a{color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:10px}
-    .nav a:hover{background:rgba(255,255,255,0.03);color:#fff}
-
-    .hero{display:grid;grid-template-columns:1fr 420px;gap:28px;align-items:center;margin-top:32px}
-    .hero-left h2{font-size:36px;margin:0 0 10px}
-    .hero-left p{color:var(--muted);margin:0 0 18px}
-    .cta{display:flex;gap:12px}
-    .btn{background:var(--accent);color:white;padding:12px 18px;border-radius:12px;text-decoration:none;font-weight:600}
-    .btn.alt{background:transparent;border:1px solid rgba(255,255,255,0.06)}
-
-    .card{background:linear-gradient(180deg,var(--card), rgba(255,255,255,0.01));padding:18px;border-radius:var(--radius);box-shadow:0 6px 30px rgba(0,0,0,0.5)}
-
-    .services{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:28px}
-    .service{padding:14px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));}
-    .service h3{margin:0 0 8px}
-    .service p{margin:0;color:var(--muted);font-size:14px}
-
-    .two-col{display:grid;grid-template-columns:1fr 420px;gap:24px;margin-top:28px}
-
-    form label{display:block;margin-bottom:8px;font-weight:600}
-    form input, form select, form textarea{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:#fff}
-    form textarea{min-height:110px;resize:vertical}
-    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .muted{color:var(--muted);font-size:13px}
-
-    /* Portfolio grid */
-    .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:16px}
-    .thumb{background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.4));height:140px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600}
-
-    footer{margin-top:36px;padding:18px 0;border-top:1px solid rgba(255,255,255,0.03)}
-    .footer-grid{display:flex;justify-content:space-between;align-items:center;gap:12px}
-
-    @media (max-width:900px){
-      .hero,.two-col{grid-template-columns:1fr}
-      .brand img{height:46px}
-      .nav{display:none}
-    }
+    /* Minimal modern styling: responsive grid, clean cards */
+    :root{--accent:#0f172a;--muted:#6b7280;--card:#ffffff}
+    *{box-sizing:border-box;font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+    body{margin:0;background:#f8fafc;color:#0b1220}
+    header{background:linear-gradient(90deg,#0b1220,#1f2937);color:white;padding:18px}
+    .container{max-width:1100px;margin:22px auto;padding:0 16px}
+    nav{display:flex;gap:12px;align-items:center}
+    nav a{color:rgba(255,255,255,0.9);text-decoration:none;font-weight:600}
+    .hero{display:grid;grid-template-columns:1fr;gap:16px;align-items:center;padding:40px 0}
+    .hero h1{margin:0;font-size:32px}
+    .services{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+    .card{background:var(--card);padding:16px;border-radius:10px;box-shadow:0 6px 16px rgba(12,16,20,0.06)}
+    .card h3{margin:0 0 8px}
+    .btn{display:inline-block;padding:10px 14px;border-radius:8px;background:#111827;color:white;text-decoration:none}
+    footer{padding:24px;text-align:center;color:var(--muted)}
+    .grid-two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    form label{display:block;margin:10px 0 6px;font-weight:600}
+    input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ee}
+    .small{font-size:13px;color:var(--muted)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #eef2f7;text-align:left}
+    .admin-hidden{display:none}
+    @media(max-width:800px){.grid-two{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="brand">
-        <!-- Replace src with your red logo file path -->
-        <img src="/logo-placeholder.png" alt="ChopStudios logo">
-        <div>
-          <h1>ChopStudios</h1>
-          <div class="muted">Fotografia • Vídeo • Produção Musical</div>
+  <header>
+    <div class="container">
+      <nav>
+        <a href="#home">ChopStudios</a>
+        <a href="#services">Serviços</a>
+        <a href="#portfolio">Portfólio</a>
+        <a href="#faq">FAQ</a>
+        <a href="#booking">Marcação</a>
+        <a href="#admin">Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="home" class="hero">
+      <div>
+        <h1>ChopStudios — Fotografia, Vídeo e Produção Musical</h1>
+        <p class="small">Transformamos ideias em imagens e som com profissionalismo. Videoclips, sessões, casamentos, captação, mix e master — tudo em um só lugar.</p>
+        <p><a class="btn" href="#booking">Pedir Orçamento</a></p>
+      </div>
+    </section>
+
+    <section id="services">
+      <h2>Serviços</h2>
+      <div class="services">
+        <div class="card">
+          <h3>Fotografia</h3>
+          <p class="small">Sessões de estúdio, exterior, retratos, produto e eventos (casamentos, batizados, concertos, desafios militares).</p>
+        </div>
+        <div class="card">
+          <h3>Vídeo</h3>
+          <p class="small">Videoclips, cobertura de eventos, vídeos promocionais e edição completa com color grading.</p>
+        </div>
+        <div class="card">
+          <h3>Produção Musical</h3>
+          <p class="small">Captação, mix e master para artistas solo e bandas. Também criamos capas de álbuns com design personalizado.</p>
+        </div>
+        <div class="card">
+          <h3>Conteúdo para Redes</h3>
+          <p class="small">Reels, fotos e pacotes para marcas — conteúdo otimizado para Instagram e outras plataformas.</p>
+        </div>
+        <div class="card">
+          <h3>Impressões</h3>
+          <p class="small">Impressão de fotografias 14,5 x 10 cm (Selphy CP1500) — ideal para entregas rápidas em eventos.</p>
+        </div>
+        <div class="card">
+          <h3>Produção & Equipa</h3>
+          <p class="small">Equipa completa para projectos maiores: direção, captação multicâmera e coordenação logística.</p>
         </div>
       </div>
-      <nav class="nav">
-        <a href="#servicos">Serviços</a>
-        <a href="#portfolio">Portfólio</a>
-        <a href="#marcacoes">Marcações</a>
-        <a href="#contactos">Contactos</a>
-      </nav>
-    </header>
+    </section>
 
-    <section class="hero">
-      <div class="hero-left">
-        <h2>Capturamos o teu som e imagem com estilo.</h2>
-        <p class="muted">Sessões fotográficas, videoclips, gravação de som para artistas e bandas, impressão profissional e gestão de redes sociais — tudo num só estúdio.</p>
-        <div class="cta">
-          <a href="#marcacoes" class="btn">Marcar Sessão</a>
-          <a href="#servicos" class="btn alt">Ver Serviços</a>
-        </div>
+    <section id="portfolio" style="margin-top:28px">
+      <h2>Portfólio</h2>
+      <div class="grid-two">
+        <div class="card"> <strong>Fotos & Vídeos</strong><p class="small">Adiciona aqui imagens e links para os teus melhores trabalhos (substitui as imagens de exemplo).</p></div>
+        <div class="card"> <strong>Capas & Álbuns</strong><p class="small">Mostra capas que já criaste e links para faixas mixadas/masterizadas.</p></div>
+      </div>
+    </section>
 
-        <div class="card" style="margin-top:18px">
-          <strong>Serviços rápidos</strong>
-          <div class="services" style="margin-top:12px">
-            <div class="service">
-              <h3>Sessão Fotográfica</h3>
-              <p>Retratos, produto, exteriores — orientação profissional e edição inclusa.</p>
+    <section id="faq" style="margin-top:28px">
+      <h2>FAQ</h2>
+      <div class="card">
+        <p><strong>Como pedir orçamento?</strong> — Preenche o formulário de marcação com o máximo de detalhe possível.</p>
+        <p><strong>Pagamento?</strong> — Aceitas pagamentos em transferência/MBWay; termos a definir por projeto.</p>
+      </div>
+    </section>
+
+    <section id="booking" style="margin-top:28px">
+      <h2>Marcação / Pedido de Serviço</h2>
+      <div class="card">
+        <form id="bookingForm">
+          <div class="grid-two">
+            <div>
+              <label>Nome</label>
+              <input name="firstName" required>
             </div>
-            <div class="service">
-              <h3>Vídeo & Videoclips</h3>
-              <p>Captação e edição para videoclips, eventos e vídeos promocionais.</p>
-            </div>
-            <div class="service">
-              <h3>Gravação de Som</h3>
-              <p>Captação de voz para artistas solo e gravação de bandas com equipamento profissional.</p>
-            </div>
-            <div class="service">
-              <h3>Impressões</h3>
-              <p>Encomenda de impressões profissionais: papel, tamanhos e acabamentos à escolha.</p>
-            </div>
-            <div class="service">
-              <h3>Gestão de Redes</h3>
-              <p>Conteúdo para Instagram e estratégia para aumentar visibilidade.</p>
-            </div>
-            <div class="service">
-              <h3>Reunião / Consultoria</h3>
-              <p>Briefing criativo para projetos, preços e planeamento.</p>
+            <div>
+              <label>Apelido</label>
+              <input name="lastName" required>
             </div>
           </div>
-        </div>
 
-      </div>
+          <label>Contacto Telefónico</label>
+          <input name="phone" required>
 
-      <aside class="card">
-        <h3>Marca já a tua sessão</h3>
-        <p class="muted">Preenche o formulário e nós confirmamos por email.</p>
+          <label>Email</label>
+          <input name="email" type="email" required>
 
-        <!-- Booking form: replace YOUR_FORMSPREE_ID with your Formspree ID -->
-        <form action="https://formspree.io/f/YOUR_FORMSPREE_ID" method="POST" enctype="multipart/form-data">
-          <input type="hidden" name="_subject" value="Nova marcação — ChopStudios">
-          <label for="name">Nome</label>
-          <input id="name" name="name" required>
-
-          <label for="email">Email</label>
-          <input id="email" name="email" type="email" required>
-
-          <label for="service">Serviço</label>
-          <select id="service" name="service" required>
-            <option value="Sessao fotografica">Sessão Fotográfica</option>
-            <option value="Video">Vídeo</option>
-            <option value="Videoclip">Videoclip</option>
-            <option value="Gravacao de som">Gravação de Som (Artista/Banda)</option>
-            <option value="Impressao">Impressão de Fotografia (Encomenda)</option>
-            <option value="Gestao redes">Gestão de Redes Sociais</option>
-            <option value="Reuniao">Reunião / Consultoria</option>
+          <label>Serviço Pretendido</label>
+          <select name="service" required>
+            <option>Fotografia - Sessão</option>
+            <option>Fotografia - Evento</option>
+            <option>Vídeo - Videoclip</option>
+            <option>Vídeo - Evento</option>
+            <option>Produção Musical - Gravação</option>
+            <option>Produção Musical - Mix & Master</option>
+            <option>Design de Capa</option>
+            <option>Conteúdo para Redes Sociais</option>
+            <option>Impressão 14,5x10</option>
           </select>
 
-          <div class="form-row" style="margin-top:10px">
-            <div>
-              <label for="date">Data preferida</label>
-              <input id="date" name="date" type="date" required>
+          <label>Local (opcional)</label>
+          <input name="location">
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div style="flex:1">
+              <label>Data do Trabalho</label>
+              <input name="date" type="date" required>
             </div>
-            <div>
-              <label for="time">Hora preferida</label>
-              <input id="time" name="time" type="time" required>
+            <div style="flex:1">
+              <label>Hora de Início</label>
+              <input name="startTime" type="time" required>
+            </div>
+            <div style="flex:1">
+              <label>Hora de Finalização</label>
+              <input name="endTime" type="time" required>
             </div>
           </div>
 
-          <label for="message" style="margin-top:10px">Detalhes / Notas</label>
-          <textarea id="message" name="message" placeholder="Diz-nos o que precisas (ex: duração, local, referências)"></textarea>
+          <label>Duração estimada (ex: 3h ou 180 min)</label>
+          <input name="duration">
 
-          <div style="display:flex;gap:8px;margin-top:12px">
-            <button type="submit" class="btn">Enviar marcação</button>
-            <a href="#contactos" class="btn alt">Contactar por WhatsApp</a>
+          <label>Descrição do Projeto</label>
+          <textarea name="description" rows="4" required></textarea>
+
+          <label>Link de ficheiro ou referências (opcional)</label>
+          <input name="fileUrl" placeholder="Link para drive, imagem de referência...">
+
+          <p class="small">Ao submeter, os dados vão para o sistema de gestão interno da ChopStudios. Receberás confirmação por email (se fornecido).</p>
+
+          <div style="margin-top:12px">
+            <button class="btn" type="submit">Enviar Pedido</button>
+            <span id="bookingResult" class="small" style="margin-left:12px"></span>
           </div>
         </form>
-
-      </aside>
-    </section>
-
-    <section id="portfolio" style="margin-top:36px">
-      <h2>Portfólio</h2>
-      <p class="muted">Exemplos rápidos — substitui estas miniaturas com as tuas imagens/vídeos.</p>
-      <div class="gallery">
-        <div class="thumb">Foto 1</div>
-        <div class="thumb">Foto 2</div>
-        <div class="thumb">Videoclip</div>
-        <div class="thumb">Gravação</div>
-        <div class="thumb">Impressão</div>
-        <div class="thumb">Sessão</div>
       </div>
     </section>
 
-    <section id="servicos" style="margin-top:36px">
-      <h2>Serviços detalhados</h2>
-      <div class="two-col">
-        <div>
-          <div class="card">
-            <h3>Sessão Fotográfica</h3>
-            <p class="muted">Sessões em estúdio ou exteriores. Inclui edição básica. Entrega digital e opção de impressão.</p>
+    <section id="admin" style="margin-top:28px">
+      <h2>Painel Admin</h2>
+      <div class="card">
+        <div id="adminLogin">
+          <p class="small">Área privada — apenas para o proprietário.</p>
+          <label>Insere a chave de administrador</label>
+          <input id="adminKeyInput" placeholder="Chave secreta">
+          <div style="margin-top:8px"><button id="adminLoginBtn" class="btn">Entrar</button></div>
+        </div>
 
-            <h3 style="margin-top:12px">Vídeo & Videoclips</h3>
-            <p class="muted">Captação com produção criativa e edição profissional. Pacotes para videoclips e eventos.</p>
+        <div id="adminArea" class="admin-hidden">
+          <p class="small">Aqui vês todos os pedidos, alteras preços e estados, e vês um resumo mensal.</p>
+          <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:220px">
+              <label>Filtrar por mês</label>
+              <input id="summaryMonth" type="month">
+              <div style="margin-top:8px"><button id="getSummaryBtn" class="btn">Gerar Resumo</button></div>
+              <div id="summaryResult" class="small" style="margin-top:8px"></div>
+            </div>
+            <div style="flex:2;min-width:260px">
+              <label>Pesquisar por nome, serviço ou telefone</label>
+              <input id="adminSearch">
+            </div>
+          </div>
 
-            <h3 style="margin-top:12px">Gravação de Som</h3>
-            <p class="muted">Microfones e interface profissional, tratamento acústico e mistura básica. Sessões para artistas solo e bandas.</p>
+          <div style="margin-top:12px;overflow:auto;max-height:420px">
+            <table id="adminTable">
+              <thead><tr><th>Timestamp</th><th>Nome</th><th>Serviço</th><th>Data</th><th>Horas</th><th>Status</th><th>Preço</th><th>Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
 
-            <h3 style="margin-top:12px">Gestão de Redes Sociais</h3>
-            <p class="muted">Criação de conteúdo, calendários editoriais e gestão de publicações (Instagram, Reels).</p>
-
-            <h3 style="margin-top:12px">Reunião / Consultoria</h3>
-            <p class="muted">Sessão de planeamento para projetos, orçamentos e guião criativo.</p>
+          <div style="margin-top:12px">
+            <label>Calendário simples (mapeia pedidos por data)</label>
+            <div id="calendar" style="padding:8px;background:#fff;border-radius:8px;margin-top:8px"></div>
           </div>
         </div>
-
-        <aside class="card">
-          <h3>Encomenda de Impressões</h3>
-          <p class="muted">Envia o ficheiro e escolhe tamanho, papel e quantidade — nós tratamos do resto.</p>
-
-          <!-- Print order form: file upload; ensure your Formspree plan accepts attachments -->
-          <form action="https://formspree.io/f/YOUR_FORMSPREE_ID" method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="_subject" value="Encomenda de Impressao — ChopStudios">
-            <label for="cust-name">Nome</label>
-            <input id="cust-name" name="name" required>
-
-            <label for="cust-email">Email</label>
-            <input id="cust-email" name="email" type="email" required>
-
-            <label for="size">Tamanho</label>
-            <select id="size" name="size">
-              <option>A4</option>
-              <option>A3</option>
-              <option>30x45cm</option>
-              <option>Personalizado</option>
-            </select>
-
-            <label for="paper">Papel</label>
-            <select id="paper" name="paper">
-              <option>Mate</option>
-              <option>Brilhante</option>
-              <option>Fine Art</option>
-            </select>
-
-            <label for="qty">Quantidade</label>
-            <input id="qty" name="quantity" type="number" min="1" value="1">
-
-            <label for="file">Ficheiro (JPEG/PNG) — max depende do serviço Formspree</label>
-            <input id="file" name="file" type="file" accept="image/*">
-
-            <div style="margin-top:10px">
-              <button class="btn" type="submit">Enviar encomenda</button>
-            </div>
-          </form>
-        </aside>
       </div>
     </section>
 
-    <section id="marcacoes" style="margin-top:36px">
-      <h2>Marcações</h2>
-      <p class="muted">Podes usar o formulário da secção principal ou integrar um calendário externo (Calendly/Apointlet) — se preferires, eu posso ajudar a embutir mais tarde.</p>
-      <div class="card" style="margin-top:12px">
-        <strong>Como funciona</strong>
-        <p class="muted">Após recebermos a tua marcação, confirmamos a disponibilidade por email e combinamos o pagamento/condições.</p>
-      </div>
-    </section>
+  </main>
 
-    <section id="contactos" style="margin-top:36px">
-      <h2>Contactos</h2>
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div>
-          <p><strong>Email:</strong> <span class="muted">CONTACT_EMAIL</span></p>
-          <p><strong>Instagram:</strong> <span class="muted">@your_instagram</span></p>
-          <p><strong>WhatsApp:</strong> <span class="muted">+351 9XXXXXXXX</span></p>
-        </div>
-        <div style="min-width:220px">
-          <p class="muted">Segue-nos para ver trabalhos recentes e Stories com bastidores.</p>
-        </div>
-      </div>
-    </section>
+  <footer>
+    <div class="container">© ChopStudios — Todos os direitos reservados</div>
+  </footer>
 
-    <footer>
-      <div class="footer-grid">
-        <div class="muted">© ChopStudios — Todos os direitos reservados</div>
-        <div class="muted">Feito por Tiago — 5 anos de experiência em foto & vídeo</div>
-      </div>
-    </footer>
-  </div>
+  <script>
+    // === CONFIG - replace these with your values after deploying the Apps Script ===
+    const API_ENDPOINT = '<REPLACE_WITH_YOUR_WEB_APP_URL>'; // e.g. https://script.google.com/macros/s/XXX/exec
+    // ADMIN_KEY should match the one you put in the Apps Script file (ADMIN_KEY)
+    let ADMIN_KEY = '<REPLACE_WITH_YOUR_ADMIN_KEY>'; // keep this secret — it's used to fetch admin data
+    // ==================================================================================
+
+    // Booking form submission
+    document.getElementById('bookingForm').addEventListener('submit', async function(e){
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form).entries());
+      data.action = 'submit';
+      try{
+        const res = await fetch(API_ENDPOINT, {
+          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (json.status==='ok'){
+          document.getElementById('bookingResult').textContent='Pedido enviado com sucesso!';
+          form.reset();
+        } else {
+          document.getElementById('bookingResult').textContent='Erro: '+(json.message||'');
+        }
+      }catch(err){
+        console.error(err);document.getElementById('bookingResult').textContent='Erro ao enviar. Verifica a API.';
+      }
+    });
+
+    // Admin login
+    document.getElementById('adminLoginBtn').addEventListener('click', async ()=>{
+      const val = document.getElementById('adminKeyInput').value.trim();
+      if (!val) return alert('Insere a chave de admin');
+      // store locally for session
+      ADMIN_KEY = val;
+      localStorage.setItem('chop_admin_key', val);
+      await loadAdminData();
+    });
+
+    // keep admin key from storage
+    (function(){ const k = localStorage.getItem('chop_admin_key'); if(k){ ADMIN_KEY = k; document.getElementById('adminKeyInput').value = '********'; loadAdminData(); } })();
+
+    // fetch admin list
+    async function loadAdminData(){
+      if (!API_ENDPOINT || API_ENDPOINT.includes('REPLACE')) { alert('Substitui API_ENDPOINT no ficheiro com o teu Web App URL'); return; }
+      try{
+        const res = await fetch(API_ENDPOINT, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'admin_list', adminKey: ADMIN_KEY})});
+        const json = await res.json();
+        if (json.status === 'ok'){
+          document.getElementById('adminLogin').style.display='none';
+          document.getElementById('adminArea').classList.remove('admin-hidden');
+          populateAdminTable(json.data);
+          buildCalendar(json.data);
+        } else {
+          alert('Autenticação falhou — chave inválida');
+        }
+      }catch(err){console.error(err);alert('Erro ao obter dados do servidor');}
+    }
+
+    function populateAdminTable(items){
+      const tbody = document.querySelector('#adminTable tbody'); tbody.innerHTML='';
+      items.sort((a,b)=> new Date(b.Timestamp)-new Date(a.Timestamp)).forEach(item=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${item.Timestamp}</td><td>${item.FirstName} ${item.LastName}</td><td>${item.Service}</td><td>${item.Date}</td><td>${item.StartTime} - ${item.EndTime}</td><td>${item.Status||''}</td><td>${item.Price||''}</td><td><button class='editBtn'>Editar</button></td>`;
+        tr.querySelector('.editBtn').addEventListener('click', ()=> openEditModal(item));
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openEditModal(item){
+      const newPrice = prompt('Define o preço (€) para o projecto:', item.Price||'');
+      if (newPrice === null) return; // cancel
+      const newStatus = prompt('Define o status (A Confirmar / Em Progresso / Finalizado):', item.Status||'A Confirmar');
+      if (newStatus === null) return;
+      // send update to API
+      fetch(API_ENDPOINT, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'admin_update', adminKey: ADMIN_KEY, Timestamp: item.Timestamp, Price: newPrice, Status: newStatus})})
+      .then(r=>r.json()).then(j=>{ if (j.status==='ok'){ alert('Atualizado'); loadAdminData(); } else alert('Erro ao atualizar'); }).catch(err=>{console.error(err);alert('Erro de rede');});
+    }
+
+    // Summary
+    document.getElementById('getSummaryBtn').addEventListener('click', async ()=>{
+      const val = document.getElementById('summaryMonth').value; if(!val) return alert('Escolhe um mês');
+      const [year,month] = val.split('-');
+      try{
+        const res = await fetch(API_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'monthly_summary', adminKey: ADMIN_KEY, month: parseInt(month,10), year: parseInt(year,10)})});
+        const json = await res.json();
+        if (json.status==='ok'){
+          document.getElementById('summaryResult').textContent = `Trabalhos: ${json.count} · Total faturado: €${json.total}`;
+        } else alert('Erro ao gerar resumo');
+      }catch(err){console.error(err);alert('Erro de rede');}
+    });
+
+    // Simple client-side search
+    document.getElementById('adminSearch').addEventListener('input', function(){
+      const q = this.value.toLowerCase();
+      document.querySelectorAll('#adminTable tbody tr').forEach(tr=>{
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    // Simple calendar build
+    function buildCalendar(items){
+      const cal = document.getElementById('calendar'); cal.innerHTML='';
+      // group by date
+      const map = {};
+      items.forEach(it => { const d = it.Date || (new Date(it.Timestamp)).toISOString().slice(0,10); if(!map[d]) map[d]=[]; map[d].push(it); });
+      const dates = Object.keys(map).sort();
+      if (dates.length===0) { cal.textContent='Nenhum pedido registado'; return; }
+      dates.forEach(d => {
+        const card = document.createElement('div'); card.style.padding='8px'; card.style.borderBottom='1px solid #eef2f7';
+        const h = document.createElement('div'); h.style.fontWeight='700'; h.textContent = d;
+        card.appendChild(h);
+        map[d].forEach(it=>{ const p = document.createElement('div'); p.textContent = `${it.StartTime || ''} ${it.FirstName} ${it.LastName} — ${it.Service} [${it.Status||''}] €${it.Price||''}`; card.appendChild(p); });
+        cal.appendChild(card);
+      });
+    }
+
+  </script>
 </body>
 </html>
