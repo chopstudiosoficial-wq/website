@@ -1,0 +1,310 @@
+<!--
+  ChopStudios - Single-file HTML + CSS site (ready for GitHub Pages)
+
+  INSTRUCTIONS (quick):
+  1) Replace "YOUR_FORMSPREE_ID" in the two <form action="..."> attributes with your Formspree form ID.
+     Example: https://formspree.io/f/mnqwerz
+     Alternatively you can replace the full action URL with a different service (Calendly/Apointlet embed)
+  2) Replace CONTACT_EMAIL with your email where you want to receive bookings (optional; Formspree doesn't need it visible).
+  3) Replace social handles and WhatsApp number in the footer.
+  4) Replace the hero logo placeholder with your red logo when you have it: <img src="/path/to/logo.png" alt="ChopStudios">
+  5) Commit this file to a GitHub repo and enable GitHub Pages on the main branch (Settings → Pages → Deploy).
+
+  NOTES:
+  - This version uses only HTML + CSS (no external JS). Booking/encomendas use Formspree (free tier available).
+  - File uploads in the print-order form will be sent via Formspree if your Formspree plan supports attachments.
+  - If later you want a calendar booking UI, embed Calendly/Apointlet iframe in the "Marcações" section.
+-->
+
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ChopStudios — Fotografia & Vídeo</title>
+  <meta name="description" content="ChopStudios — Sessões fotográficas, videoclips, gravação de som, impressão de fotografias, gestão de redes sociais.">
+  <style>
+    :root{
+      --bg:#0b0b0b;
+      --card:#0f0f0f;
+      --muted:#bdbdbd;
+      --accent:#c52020; /* vermelho do logo */
+      --glass: rgba(255,255,255,0.03);
+      --radius:14px;
+      --maxwidth:1100px;
+      --accent-2: #ff6666;
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background:linear-gradient(180deg,var(--bg),#070707);
+      color:#fff;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      line-height:1.45;
+    }
+
+    .wrap{max-width:var(--maxwidth);margin:36px auto;padding:24px}
+
+    header{display:flex;align-items:center;justify-content:space-between;gap:24px}
+    .brand{display:flex;align-items:center;gap:14px}
+    .brand img{height:56px;width:auto;border-radius:8px;background:var(--glass);padding:6px}
+    .brand h1{font-size:20px;margin:0}
+    .nav{display:flex;gap:16px;align-items:center}
+    .nav a{color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:10px}
+    .nav a:hover{background:rgba(255,255,255,0.03);color:#fff}
+
+    .hero{display:grid;grid-template-columns:1fr 420px;gap:28px;align-items:center;margin-top:32px}
+    .hero-left h2{font-size:36px;margin:0 0 10px}
+    .hero-left p{color:var(--muted);margin:0 0 18px}
+    .cta{display:flex;gap:12px}
+    .btn{background:var(--accent);color:white;padding:12px 18px;border-radius:12px;text-decoration:none;font-weight:600}
+    .btn.alt{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+
+    .card{background:linear-gradient(180deg,var(--card), rgba(255,255,255,0.01));padding:18px;border-radius:var(--radius);box-shadow:0 6px 30px rgba(0,0,0,0.5)}
+
+    .services{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:28px}
+    .service{padding:14px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));}
+    .service h3{margin:0 0 8px}
+    .service p{margin:0;color:var(--muted);font-size:14px}
+
+    .two-col{display:grid;grid-template-columns:1fr 420px;gap:24px;margin-top:28px}
+
+    form label{display:block;margin-bottom:8px;font-weight:600}
+    form input, form select, form textarea{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:#fff}
+    form textarea{min-height:110px;resize:vertical}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .muted{color:var(--muted);font-size:13px}
+
+    /* Portfolio grid */
+    .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:16px}
+    .thumb{background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.4));height:140px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600}
+
+    footer{margin-top:36px;padding:18px 0;border-top:1px solid rgba(255,255,255,0.03)}
+    .footer-grid{display:flex;justify-content:space-between;align-items:center;gap:12px}
+
+    @media (max-width:900px){
+      .hero,.two-col{grid-template-columns:1fr}
+      .brand img{height:46px}
+      .nav{display:none}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <!-- Replace src with your red logo file path -->
+        <img src="/logo-placeholder.png" alt="ChopStudios logo">
+        <div>
+          <h1>ChopStudios</h1>
+          <div class="muted">Fotografia • Vídeo • Produção Musical</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#servicos">Serviços</a>
+        <a href="#portfolio">Portfólio</a>
+        <a href="#marcacoes">Marcações</a>
+        <a href="#contactos">Contactos</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-left">
+        <h2>Capturamos o teu som e imagem com estilo.</h2>
+        <p class="muted">Sessões fotográficas, videoclips, gravação de som para artistas e bandas, impressão profissional e gestão de redes sociais — tudo num só estúdio.</p>
+        <div class="cta">
+          <a href="#marcacoes" class="btn">Marcar Sessão</a>
+          <a href="#servicos" class="btn alt">Ver Serviços</a>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <strong>Serviços rápidos</strong>
+          <div class="services" style="margin-top:12px">
+            <div class="service">
+              <h3>Sessão Fotográfica</h3>
+              <p>Retratos, produto, exteriores — orientação profissional e edição inclusa.</p>
+            </div>
+            <div class="service">
+              <h3>Vídeo & Videoclips</h3>
+              <p>Captação e edição para videoclips, eventos e vídeos promocionais.</p>
+            </div>
+            <div class="service">
+              <h3>Gravação de Som</h3>
+              <p>Captação de voz para artistas solo e gravação de bandas com equipamento profissional.</p>
+            </div>
+            <div class="service">
+              <h3>Impressões</h3>
+              <p>Encomenda de impressões profissionais: papel, tamanhos e acabamentos à escolha.</p>
+            </div>
+            <div class="service">
+              <h3>Gestão de Redes</h3>
+              <p>Conteúdo para Instagram e estratégia para aumentar visibilidade.</p>
+            </div>
+            <div class="service">
+              <h3>Reunião / Consultoria</h3>
+              <p>Briefing criativo para projetos, preços e planeamento.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <aside class="card">
+        <h3>Marca já a tua sessão</h3>
+        <p class="muted">Preenche o formulário e nós confirmamos por email.</p>
+
+        <!-- Booking form: replace YOUR_FORMSPREE_ID with your Formspree ID -->
+        <form action="https://formspree.io/f/YOUR_FORMSPREE_ID" method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="_subject" value="Nova marcação — ChopStudios">
+          <label for="name">Nome</label>
+          <input id="name" name="name" required>
+
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" required>
+
+          <label for="service">Serviço</label>
+          <select id="service" name="service" required>
+            <option value="Sessao fotografica">Sessão Fotográfica</option>
+            <option value="Video">Vídeo</option>
+            <option value="Videoclip">Videoclip</option>
+            <option value="Gravacao de som">Gravação de Som (Artista/Banda)</option>
+            <option value="Impressao">Impressão de Fotografia (Encomenda)</option>
+            <option value="Gestao redes">Gestão de Redes Sociais</option>
+            <option value="Reuniao">Reunião / Consultoria</option>
+          </select>
+
+          <div class="form-row" style="margin-top:10px">
+            <div>
+              <label for="date">Data preferida</label>
+              <input id="date" name="date" type="date" required>
+            </div>
+            <div>
+              <label for="time">Hora preferida</label>
+              <input id="time" name="time" type="time" required>
+            </div>
+          </div>
+
+          <label for="message" style="margin-top:10px">Detalhes / Notas</label>
+          <textarea id="message" name="message" placeholder="Diz-nos o que precisas (ex: duração, local, referências)"></textarea>
+
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button type="submit" class="btn">Enviar marcação</button>
+            <a href="#contactos" class="btn alt">Contactar por WhatsApp</a>
+          </div>
+        </form>
+
+      </aside>
+    </section>
+
+    <section id="portfolio" style="margin-top:36px">
+      <h2>Portfólio</h2>
+      <p class="muted">Exemplos rápidos — substitui estas miniaturas com as tuas imagens/vídeos.</p>
+      <div class="gallery">
+        <div class="thumb">Foto 1</div>
+        <div class="thumb">Foto 2</div>
+        <div class="thumb">Videoclip</div>
+        <div class="thumb">Gravação</div>
+        <div class="thumb">Impressão</div>
+        <div class="thumb">Sessão</div>
+      </div>
+    </section>
+
+    <section id="servicos" style="margin-top:36px">
+      <h2>Serviços detalhados</h2>
+      <div class="two-col">
+        <div>
+          <div class="card">
+            <h3>Sessão Fotográfica</h3>
+            <p class="muted">Sessões em estúdio ou exteriores. Inclui edição básica. Entrega digital e opção de impressão.</p>
+
+            <h3 style="margin-top:12px">Vídeo & Videoclips</h3>
+            <p class="muted">Captação com produção criativa e edição profissional. Pacotes para videoclips e eventos.</p>
+
+            <h3 style="margin-top:12px">Gravação de Som</h3>
+            <p class="muted">Microfones e interface profissional, tratamento acústico e mistura básica. Sessões para artistas solo e bandas.</p>
+
+            <h3 style="margin-top:12px">Gestão de Redes Sociais</h3>
+            <p class="muted">Criação de conteúdo, calendários editoriais e gestão de publicações (Instagram, Reels).</p>
+
+            <h3 style="margin-top:12px">Reunião / Consultoria</h3>
+            <p class="muted">Sessão de planeamento para projetos, orçamentos e guião criativo.</p>
+          </div>
+        </div>
+
+        <aside class="card">
+          <h3>Encomenda de Impressões</h3>
+          <p class="muted">Envia o ficheiro e escolhe tamanho, papel e quantidade — nós tratamos do resto.</p>
+
+          <!-- Print order form: file upload; ensure your Formspree plan accepts attachments -->
+          <form action="https://formspree.io/f/YOUR_FORMSPREE_ID" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="_subject" value="Encomenda de Impressao — ChopStudios">
+            <label for="cust-name">Nome</label>
+            <input id="cust-name" name="name" required>
+
+            <label for="cust-email">Email</label>
+            <input id="cust-email" name="email" type="email" required>
+
+            <label for="size">Tamanho</label>
+            <select id="size" name="size">
+              <option>A4</option>
+              <option>A3</option>
+              <option>30x45cm</option>
+              <option>Personalizado</option>
+            </select>
+
+            <label for="paper">Papel</label>
+            <select id="paper" name="paper">
+              <option>Mate</option>
+              <option>Brilhante</option>
+              <option>Fine Art</option>
+            </select>
+
+            <label for="qty">Quantidade</label>
+            <input id="qty" name="quantity" type="number" min="1" value="1">
+
+            <label for="file">Ficheiro (JPEG/PNG) — max depende do serviço Formspree</label>
+            <input id="file" name="file" type="file" accept="image/*">
+
+            <div style="margin-top:10px">
+              <button class="btn" type="submit">Enviar encomenda</button>
+            </div>
+          </form>
+        </aside>
+      </div>
+    </section>
+
+    <section id="marcacoes" style="margin-top:36px">
+      <h2>Marcações</h2>
+      <p class="muted">Podes usar o formulário da secção principal ou integrar um calendário externo (Calendly/Apointlet) — se preferires, eu posso ajudar a embutir mais tarde.</p>
+      <div class="card" style="margin-top:12px">
+        <strong>Como funciona</strong>
+        <p class="muted">Após recebermos a tua marcação, confirmamos a disponibilidade por email e combinamos o pagamento/condições.</p>
+      </div>
+    </section>
+
+    <section id="contactos" style="margin-top:36px">
+      <h2>Contactos</h2>
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <p><strong>Email:</strong> <span class="muted">CONTACT_EMAIL</span></p>
+          <p><strong>Instagram:</strong> <span class="muted">@your_instagram</span></p>
+          <p><strong>WhatsApp:</strong> <span class="muted">+351 9XXXXXXXX</span></p>
+        </div>
+        <div style="min-width:220px">
+          <p class="muted">Segue-nos para ver trabalhos recentes e Stories com bastidores.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="footer-grid">
+        <div class="muted">© ChopStudios — Todos os direitos reservados</div>
+        <div class="muted">Feito por Tiago — 5 anos de experiência em foto & vídeo</div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
